@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="itext7" Version="9.1.0" />
+    <PackageReference Include="itext7.font-asian" Version="9.1.0" />
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.2" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="9.0.2" />
