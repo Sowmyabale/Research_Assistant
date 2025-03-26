@@ -113,7 +113,9 @@ public class PaperController : Controller
         allDocuments.Add(extractedText); // Include the new document
 
         // Compute keywords using TF-IDF
-        string extractedKeywords = ExtractKeywordsUsingTFIDF(extractedText, allDocuments);
+        //string extractedKeywords = ExtractKeywordsUsingTFIDF(extractedText, allDocuments);
+        string extractedKeywords = ExtractKeywordsUsingTFIDF(extractedText, allDocuments, author);
+
 
         // Save to database
         var paper = new Paper
@@ -145,7 +147,7 @@ public class PaperController : Controller
     return null;
     }
 
-private string ExtractTextFromPdf(string filePath)
+/*private string ExtractTextFromPdf(string filePath)
 {
     StringBuilder text = new StringBuilder();
 
@@ -158,13 +160,69 @@ private string ExtractTextFromPdf(string filePath)
         }
     }
     return text.ToString();
-}
-private string ExtractKeywordsUsingTFIDF(string text, List<string> allDocuments, int topN = 10)
+}*/
+private string ExtractTextFromPdf(string filePath)
 {
-    var words = Regex.Matches(text.ToLower(), @"\b[a-zA-Z]{4,}\b")
+    StringBuilder text = new StringBuilder();
+    bool abstractFound = false;
+    bool conclusionFound = false;
+
+    using (PdfReader reader = new PdfReader(filePath))
+    {
+        PdfDocument pdfDoc = new PdfDocument(reader);
+        for (int i = 1; i <= pdfDoc.GetNumberOfPages(); i++)
+        {
+            string pageText = PdfTextExtractor.GetTextFromPage(pdfDoc.GetPage(i));
+
+            if (!abstractFound)
+            {
+                // Look for 'Abstract' keyword (case-insensitive)
+                Match match = Regex.Match(pageText, @"(?i)\babstract\b");
+                if (match.Success)
+                {
+                    abstractFound = true;
+                    text.Append(pageText.Substring(match.Index)); // Start from Abstract
+                }
+            }
+            else if (!conclusionFound)
+            {
+                // Stop at 'Conclusion' or similar words
+                Match match = Regex.Match(pageText, @"(?i)\b(conclusion|summary|final remarks|closing remarks)\b");
+                if (match.Success)
+                {
+                    conclusionFound = true;
+                    text.Append(pageText.Substring(0, match.Index)); // Stop at Conclusion
+                    break; // Exit loop after finding Conclusion
+                }
+                else
+                {
+                    text.Append(pageText);
+                }
+            }
+        }
+    }
+
+    return text.ToString();
+}
+
+private string ExtractKeywordsUsingTFIDF(string text, List<string> allDocuments, string author, int topN = 10)
+{
+    var words = Regex.Matches(text.ToLower(), @"\b[a-zA-Z]{9,}\b")
                      .Select(m => m.Value)
                      .ToList();
 
+    var stopwords = new HashSet<string>
+    {
+        "university", "college", "institute", "department", "professor",
+        "research", "science", "engineering", "technology",
+        "city", "country", "school", "faculty",
+        "john", "michael", "david", "james", "robert", "mary", "jennifer", // Common first names
+        "usa", "europe", "india", "germany", "canada", "france", "china", // Countries
+        "ieee", "springer", "elsevier", "arxiv", "wiley" // Common paper sources
+    };
+
+    words = words.Where(word => !stopwords.Contains(word)).ToList();
+    
     var tf = words.GroupBy(w => w)
                   .ToDictionary(g => g.Key, g => (double)g.Count() / words.Count); // Term Frequency
 
@@ -195,7 +253,7 @@ public async Task<IActionResult> Search(string query)
     // Fetch all papers
     var papers = await _context.Papers.ToListAsync();
 
-    // 🔹 Check if the query matches any author's name
+    // Check if the query matches any author's name
     var authorMatches = papers.Where(p => p.Author != null && p.Author.ToLower().Contains(query.ToLower())).ToList();
 
     // Compute TF-IDF scores and rank results
@@ -204,7 +262,7 @@ public async Task<IActionResult> Search(string query)
                         .Select(p => p.Paper)
                         .ToList();
 
-    // 🔹 Combine results: Give priority to author matches
+    // Combine results: Give priority to author matches
     var finalResults = authorMatches.Concat(rankedResults)
                                      .GroupBy(p => p.Id) // Avoid duplicates by Paper Id
                                      .Select(g => g.First())
